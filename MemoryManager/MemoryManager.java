@@ -1,4 +1,6 @@
-public class MemoryManager {
+package MemoryManager;
+
+public class MemoryManager implements IMemoryManager {
     
     int fisicalMemorySize;
     int partitionSize;
