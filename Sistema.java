@@ -43,7 +43,7 @@ public class Sistema {
     }
 	
 	//GERENTE DE MEMÓRIA
-	public class MemoryManager implements IMemoryManager {
+	public class MemoryManager{
     
 		int fisicalMemorySize;
 		int partitionSize;
@@ -549,9 +549,9 @@ public class Sistema {
 	public class ProcessControlBlock{
 		public int id;
 		public int programCounter = 0;
-		public ArrayList<Boolean> memAlo;
+		public int memAlo;
 
-		public ProcessControlBlock(int id, ArrayList<Boolean> memAlo){
+		public ProcessControlBlock(int id, int memAlo){
 			this.memAlo = memAlo;
 			this.id = id;
 		}
@@ -561,25 +561,52 @@ public class Sistema {
 		public ArrayList<ProcessControlBlock> pcbA;
 		public ArrayList<ProcessControlBlock> running;
 		public ArrayList<ProcessControlBlock> interrupted;
+		public ArrayList<ProcessControlBlock> ready;
 		public int id = 0;
 
 		public ProcessManager(){
-			pcb = new ArrayList<ProcessControlBlock>();
+			pcbA = new ArrayList<ProcessControlBlock>();
 			running = new ArrayList<ProcessControlBlock>();
 			interrupted = new ArrayList<ProcessControlBlock>();
+			ready = new ArrayList<ProcessControlBlock>();
 		}
 
 
 		public boolean createProcess(Word[] w){
 			ProcessControlBlock pcb;
-			if(mm.alocate(w.length) != -1){
+			if(mm.allocable(w.length)){
+				int memA = mm.alocate(w.length);
+				pcb = new ProcessControlBlock(id, memA);
+				id++;
+				pcbA.add(pcb);
+				ready.add(id, pcb);
 
-
+			} else{
+				System.out.println("Sem espaço na memória");
+				return false;
 			}
+			System.out.println("Processo criado");
 			return true;
 		}
 
+		public void deallocateProcess(int id){
+			for(ProcessControlBlock pcbs : pcbA){
+				if(pcbs.id == id){
+					mm.dealocate(pcbs.memAlo);
+					pcbA.remove(pcbs);
+					ready.remove(pcbs.id);
+					System.out.println("Processo desalocado");
+				}
+			}
+			System.out.println("Processo não existe");
+		}
 
+		public void dumpProcess(){
+			for(ProcessControlBlock pcbs : pcbA){
+
+			}
+
+		}
 
 	}
 
