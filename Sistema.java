@@ -517,6 +517,8 @@ public class Sistema {
 	public InterruptHandling ih;
 	public SysCallHandling sysCall;
 	public static Programas progs;
+	public MemoryManager mm;
+	public ProcessManager pm;
 
     public Sistema(){   // a VM com tratamento de interrupções
 		 ih = new InterruptHandling();
@@ -524,6 +526,8 @@ public class Sistema {
 		 vm = new VM(ih, sysCall);
 		 sysCall.setVM(vm);
 		 progs = new Programas();
+		 mm = new MemoryManager(1024, 64);
+		 pm = new ProcessManager();
 	}
 
 	// GERENTE DE PROCESSOS
@@ -536,6 +540,32 @@ public class Sistema {
 			this.memAlo = memAlo;
 			this.id = id;
 		}
+	}
+
+	public class ProcessManager{
+		public ArrayList<ProcessControlBlock> pcbA;
+		public ArrayList<ProcessControlBlock> running;
+		public ArrayList<ProcessControlBlock> interrupted;
+		public int id = 0;
+
+		public ProcessManager(){
+			pcb = new ArrayList<ProcessControlBlock>();
+			running = new ArrayList<ProcessControlBlock>();
+			interrupted = new ArrayList<ProcessControlBlock>();
+		}
+
+
+		public boolean createProcess(Word[] w){
+			ProcessControlBlock pcb;
+			if(mm.alocate(w.length) != -1){
+				
+
+			}
+			return true;
+		}
+
+
+
 	}
 
     // -------------------  S I S T E M A - fim --------------------------------------------------------------
