@@ -526,6 +526,18 @@ public class Sistema {
 		 progs = new Programas();
 	}
 
+	// GERENTE DE PROCESSOS
+	public class ProcessControlBlock{
+		public int id;
+		public int programCounter = 0;
+		public ArrayList<Boolean> memAlo;
+
+		public ProcessControlBlock(int id, ArrayList<Boolean> memAlo){
+			this.memAlo = memAlo;
+			this.id = id;
+		}
+	}
+
     // -------------------  S I S T E M A - fim --------------------------------------------------------------
     // -------------------------------------------------------------------------------------------------------
 
