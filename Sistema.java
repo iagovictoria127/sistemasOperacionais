@@ -61,7 +61,22 @@ public class Sistema {
 			numOfPartitions = (int) Math.ceil(m/p);
 			logicalMemory = new boolean[numOfPartitions];
 		}
+		
+		public boolean allocable(int numOfWords){
+			if(numOfWords > partitionSize) {
+				return false;
+			} 
 	
+			for(int i = 0; i < logicalMemory.length; i++) {
+				boolean isFrameOccupied = logicalMemory[i];
+				if (isFrameOccupied) continue;
+				return true;
+			}
+	
+			return false;
+
+		}
+
 		/** 
 		 * Aloca número de palavras em uma partição, e retorna onde foi salvo
 		 * @param numOfWords Quantidade de palavras do programa para alocar
@@ -558,7 +573,7 @@ public class Sistema {
 		public boolean createProcess(Word[] w){
 			ProcessControlBlock pcb;
 			if(mm.alocate(w.length) != -1){
-				
+
 
 			}
 			return true;
