@@ -8,6 +8,7 @@
 // Funcionalidades de carga, execução e dump de memória
 
 import java.util.*;
+import java.util.function.Function;
 
 public class Sistema {
 	
@@ -616,10 +617,43 @@ public class Sistema {
     // -------------------------------------------------------------------------------------------------------
     // ------------------- instancia e testa sistema
 	public static void main(String args[]) {
-		Sistema s = new Sistema();			
+		Scanner sc = new Scanner(System.in);
+		Sistema s = new Sistema();
+		
+		System.out.println("Seja bem vindo ao sistema!");
+		System.out.println("Selecione uma ação:");
+		System.out.println("1-Fibonacci");
+		System.out.println("2-ProgMinimo");
+		System.out.println("3-Fatorial");
+		System.out.println("4-FatorialTrap");
+		System.out.println("5-FibonacciTrap");
+		System.out.println("6-Bubble Sort");
+		System.out.println("0-Exit.");
+
+		String opcao = sc.next();
+		sc.close();
+
+		switch (opcao) {
+			case "0":
+				return;
+			case "1":
+				s.loadAndExec(progs.fibonacci10);
+			case "2":
+				s.loadAndExec(progs.progMinimo);
+			case "3":
+				s.loadAndExec(progs.fatorial);
+			case "4":
+				s.loadAndExec(progs.fatorialTRAP);
+			case "5":
+				s.loadAndExec(progs.fibonacciTRAP);		
+			case "6":
+				s.loadAndExec(progs.PC);
+			default:
+				break;
+		}
 		//s.loadAndExec(progs.fibonacci10);
 		//s.loadAndExec(progs.progMinimo);
-		s.loadAndExec(progs.fatorial);
+		//s.loadAndExec(progs.fatorial);
 		//s.loadAndExec(progs.fatorialTRAP); // saida
 		//s.loadAndExec(progs.fibonacciTRAP); // entrada
 		//s.loadAndExec(progs.PC); // bubble sort
@@ -854,4 +888,3 @@ public Word[] PC = new Word[] {
 		new Word(Opcode.DATA, -1, -1, -1)};
    }
 }
-
