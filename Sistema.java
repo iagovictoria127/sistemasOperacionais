@@ -155,7 +155,7 @@ public class Sistema {
 	public class CPU {
 		private int maxInt; // valores maximo e minimo para inteiros nesta cpu
 		private int minInt;
-							// característica do processador: contexto da CPU ...
+		private int indexpart;			// característica do processador: contexto da CPU ...
 		private int pc; 			// ... composto de program counter,
 		private Word ir; 			// instruction register,
 		private int[] reg;       	// registradores da CPU
@@ -232,19 +232,23 @@ public class Sistema {
 			return false;
 		}
 
-		public void setContext(int _base, int _limite, int _pc) {  // no futuro esta funcao vai ter que ser 
+		public void setContext(int _base, int _limite, int _pc, int _indexpart, int _reg[]) {  // no futuro esta funcao vai ter que ser 
 			base = _base;                                          // expandida para setar todo contexto de execucao,
 			limite = _limite;									   // agora,  setamos somente os registradores base,
 			pc = _pc;                                              // limite e pc (deve ser zero nesta versao)
-			irpt = Interrupts.noInterrupt;                         // reset da interrupcao registrada  
+			irpt = Interrupts.noInterrupt; 
+			indexpart = _indexpart; 
+			reg = _reg;                     // reset da interrupcao registrada  
 		}
 		
 		public void run() { 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
 			while (true) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
+			   
 				if (legal(pc)) { 	// pc valido
 					ir = m[pc]; 	// <<<<<<<<<<<<           busca posicao da memoria apontada por pc, guarda em ir
+					pm.running.get(0).programCounter = pc;
 					if (debug) { System.out.print("                               pc: "+pc+"       exec: ");  mem.dump(ir); }
 			   // --------------------------------------------------------------------------------------------------
 			   // EXECUTA INSTRUCAO NO ir
@@ -254,6 +258,7 @@ public class Sistema {
 					    case LDI: // Rd ← k
 							reg[ir.r1] = ir.p;
 							pc++;
+
 							break;
 
 						case LDD: // Rd <- [A]
@@ -324,12 +329,12 @@ public class Sistema {
 
 					// Instrucoes JUMP
 						case JMP: // PC <- k
-							pc = ir.p;
-							break;
+						pc = mm.translateLogicalIndexToFisical(indexpart, ir.p);
+						break;
 						
 						case JMPIG: // If Rc > 0 Then PC ← Rs Else PC ← PC +1
 							if (reg[ir.r2] > 0) {
-								pc = reg[ir.r1];
+								pc = mm.translateLogicalIndexToFisical(indexpart,reg[ir.r1]);
 							} else {
 								pc++;
 							}
@@ -337,7 +342,7 @@ public class Sistema {
 
 						case JMPIGK: // If RC > 0 then PC <- k else PC++
 							if (reg[ir.r2] > 0) {
-								pc = ir.p;
+								pc = mm.translateLogicalIndexToFisical(indexpart,ir.p);
 							} else {
 								pc++;
 							}
@@ -345,7 +350,7 @@ public class Sistema {
 	
 						case JMPILK: // If RC < 0 then PC <- k else PC++
 							 if (reg[ir.r2] < 0) {
-								pc = ir.p;
+								pc = mm.translateLogicalIndexToFisical(indexpart,ir.p);
 							} else {
 								pc++;
 							}
@@ -353,7 +358,7 @@ public class Sistema {
 	
 						case JMPIEK: // If RC = 0 then PC <- k else PC++
 								if (reg[ir.r2] == 0) {
-									pc = ir.p;
+									pc = mm.translateLogicalIndexToFisical(indexpart,ir.p);
 								} else {
 									pc++;
 								}
@@ -362,7 +367,7 @@ public class Sistema {
 	
 						case JMPIL: // if Rc < 0 then PC <- Rs Else PC <- PC +1
 								 if (reg[ir.r2] < 0) {
-									pc = reg[ir.r1];
+									pc = mm.translateLogicalIndexToFisical(indexpart,reg[ir.r1]);
 								} else {
 									pc++;
 								}
@@ -370,19 +375,19 @@ public class Sistema {
 		
 						case JMPIE: // If Rc = 0 Then PC <- Rs Else PC <- PC +1
 								 if (reg[ir.r2] == 0) {
-									pc = reg[ir.r1];
+									pc = mm.translateLogicalIndexToFisical(indexpart,reg[ir.r1]);
 								} else {
 									pc++;
 								}
 							break; 
 	
 						case JMPIM: // PC <- [A]
-								 pc = m[ir.p].p;
+								 pc = mm.translateLogicalIndexToFisical(indexpart,m[ir.p].p);
 							 break; 
 	
 						case JMPIGM: // If RC > 0 then PC <- [A] else PC++
 								 if (reg[ir.r2] > 0) {
-									pc = m[ir.p].p;
+									pc = mm.translateLogicalIndexToFisical(indexpart,m[ir.p].p);
 								} else {
 									pc++;
 								}
@@ -390,7 +395,7 @@ public class Sistema {
 	
 						case JMPILM: // If RC < 0 then PC <- k else PC++
 								 if (reg[ir.r2] < 0) {
-									pc = m[ir.p].p;
+									pc = mm.translateLogicalIndexToFisical(indexpart,m[ir.p].p);
 								} else {
 									pc++;
 								}
@@ -398,7 +403,7 @@ public class Sistema {
 	
 						case JMPIEM: // If RC = 0 then PC <- k else PC++
 								if (reg[ir.r2] == 0) {
-									pc = m[ir.p].p;
+									pc = mm.translateLogicalIndexToFisical(indexpart,m[ir.p].p);
 								} else {
 									pc++;
 								}
@@ -406,7 +411,7 @@ public class Sistema {
 	
 						case JMPIGT: // If RS>RC then PC <- k else PC++
 								if (reg[ir.r1] > reg[ir.r2]) {
-									pc = ir.p;
+									pc = mm.translateLogicalIndexToFisical(indexpart, ir.p);
 								} else {
 									pc++;
 								}
@@ -443,6 +448,9 @@ public class Sistema {
 			}  // FIM DO CICLO DE UMA INSTRUÇÃO
 		}      
 	}
+
+
+
     // ------------------ C P U - fim ------------------------------------------------------------------------
 	// -------------------------------------------------------------------------------------------------------
 
@@ -484,9 +492,9 @@ public class Sistema {
             public void handle(Interrupts irpt, int pc) {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
 				System.out.println("                                               Interrupcao "+ irpt+ "   pc: "+pc);
 				switch(irpt){
-				case intSTOP: System.out.println("Teste stop");
+				case intSTOP: //System.out.println("Teste stop");
 				break;
-				case intTrap: System.out.println("Teste trap");
+				case intTrap: //System.out.println("Teste trap");
 				}
 			}
 	}
@@ -515,7 +523,7 @@ public class Sistema {
 		loadProgram(p, vm.m);
 	}
 
-	private void loadAndExec(Word[] p){
+	/*private void loadAndExec(Word[] p){
 		loadProgram(p);    // carga do programa na memoria
 				System.out.println("---------------------------------- programa carregado na memoria");
 				vm.mem.dump(0, p.length);            // dump da memoria nestas posicoes				
@@ -525,6 +533,127 @@ public class Sistema {
 				System.out.println("---------------------------------- memoria após execucao ");
 				vm.mem.dump(0, p.length);            // dump da memoria com resultado
 	}
+	*/
+	private void exec(int id){
+		ProcessControlBlock pcb = pm.searchProcess(id);
+			if(pcb != null){
+				int end = mm.translateLogicalIndexToFisical(pcb.memAlo, 0);
+				//System.out.println("---------------------------------- programa carregado na memoria");
+				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria nestas posicoes				
+		vm.cpu.setContext(0, vm.tamMem - 1, end, pcb.memAlo, pcb.r);      // seta estado da cpu ]
+				//System.out.println("---------------------------------- inicia execucao ");
+		pm.running.add(pcb);
+		vm.cpu.run();                                // cpu roda programa ate parar	
+				//System.out.println("---------------------------------- memoria apos execucao ");
+				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
+		} else {
+			System.out.println("Processo nao encontrado");
+		}
+	}
+
+	public void console(){
+		int op = -1;
+		int programs = -1;
+		int prcs = -1;
+		int memI = -1;
+		int memF = -1;
+		Scanner sc = new Scanner(System.in);
+		while(op!=0){
+				
+				System.out.println("\n ---------------------------------");
+				System.out.println("Seja bem vindo ao sistema!");
+				System.out.println("Selecione a operacao desejada:");
+				System.out.println("	1 - Criar processo");
+				System.out.println("	2 - Dump processo");
+				System.out.println("	3 - Desaloca processo");
+				System.out.println("	4 - Dump Memória");
+				System.out.println("	5 - Executar processo");
+				System.out.println("	6 - TraceOn");
+				System.out.println("	7 - TraceOff");
+				System.out.println("	0 - Sair");
+				System.out.print("Operacao: ");
+				
+				op = sc.nextInt();
+		
+			switch (op) {
+						case 1:
+							System.out.println("Selecione uma ação:");
+							System.out.println("1- Fibonacci");
+							System.out.println("2- ProgMinimo");
+							System.out.println("3- Fatorial");
+							System.out.println("4- FatorialTrap");
+							System.out.println("5- FibonacciTrap");
+							System.out.println("6- Bubble Sort");
+							System.out.println("0- Voltar.");
+								
+								programs = sc.nextInt();
+								switch(programs){
+									case 1: pm.createProcess(progs.fibonacci10);
+									break;
+
+									case 2: pm.createProcess(progs.progMinimo);
+									break;
+
+									case 3: pm.createProcess(progs.fatorial);
+									break;
+
+									case 4: pm.createProcess(progs.fatorialTRAP);
+									break;
+
+									case 5: pm.createProcess(progs.fibonacciTRAP);
+									break;
+
+									case 0: 
+									break;
+
+									default: System.out.println("Opcao invalida");
+									break;
+								}
+						
+							break;
+						case 2:
+							System.out.println("Digite o número do processo: ");
+							prcs = sc.nextInt();
+							pm.dumpProcess(prcs);
+							break;
+
+						case 3:
+							System.out.println("Digite o número do processo: ");
+							prcs = sc.nextInt();
+							pm.deallocateProcess(prcs);
+							break;
+
+						case 4:
+							System.out.println("Digite a posicao de inicio da memoria: ");
+							memI = sc.nextInt();
+							System.out.println("Digite a posicao de fim da memoria: ");
+							memF = sc.nextInt();
+							vm.mem.dump(memI, memF+1);
+							
+							break;
+
+						case 5:
+							System.out.println("Digite o número do processo: ");
+							prcs = sc.nextInt();
+							exec(prcs);
+							break;
+
+						case 6:  System.out.println("Trace ativo");
+							vm.cpu.debug = true;
+							break;
+
+						case 7:
+							System.out.println("Trace desativado");
+							vm.cpu.debug = false;
+						break;
+
+						case 0: System.exit(0); 
+						break;    
+			}
+		}                              
+
+	}
+
 
 	// -------------------------------------------------------------------------------------------------------
     // -------------------  S I S T E M A --------------------------------------------------------------------
@@ -542,7 +671,7 @@ public class Sistema {
 		 vm = new VM(ih, sysCall);
 		 sysCall.setVM(vm);
 		 progs = new Programas();
-		 mm = new MemoryManager(1024, 64);
+		 mm = new MemoryManager(1024, 60);
 		 pm = new ProcessManager();
 	}
 
@@ -551,10 +680,15 @@ public class Sistema {
 		public int id;
 		public int programCounter = 0;
 		public int memAlo;
+		public int memLimit;
+		public int r[];
 
-		public ProcessControlBlock(int id, int memAlo){
+		public ProcessControlBlock(int id, int memAlo, int memLimit){
 			this.memAlo = memAlo;
 			this.id = id;
+			this.memLimit = memLimit;
+			r = new int[10];
+			programCounter = mm.translateLogicalIndexToFisical(memAlo, 0);
 		}
 	}
 
@@ -577,16 +711,18 @@ public class Sistema {
 			ProcessControlBlock pcb;
 			if(mm.allocable(w.length)){
 				int memA = mm.alocate(w.length);
-				pcb = new ProcessControlBlock(id, memA);
-				id++;
+				pcb = new ProcessControlBlock(id, memA, w.length);
 				pcbA.add(pcb);
-				ready.add(id, pcb);
+				ready.add(pcb);
+				//running.add(pcb);
+				loadPrograms(w, memA);
 
 			} else{
-				System.out.println("Sem espaço na memória");
+				System.out.println("Sem espaço na memoria");
 				return false;
 			}
-			System.out.println("Processo criado");
+			System.out.println("Processo criado com id: "+(id-1));
+			id++;
 			return true;
 		}
 
@@ -596,16 +732,46 @@ public class Sistema {
 					mm.dealocate(pcbs.memAlo);
 					pcbA.remove(pcbs);
 					ready.remove(pcbs.id);
-					System.out.println("Processo desalocado");
+					System.out.println("Processo com ID "+id+" desalocado");
 				}
 			}
-			System.out.println("Processo não existe");
+			System.out.println("Processo noo existe");
 		}
 
-		public void dumpProcess(){
+		public ProcessControlBlock searchProcess(int id){
 			for(ProcessControlBlock pcbs : pcbA){
-
+				if(pcbs.id == id){
+					return pcbs;
+				}
 			}
+			return null;
+		}
+
+		public void dumpProcess(int id){
+			boolean cntrl = false;
+			for(ProcessControlBlock pcbs : pcbA){
+				if(pcbs.id == id){
+				System.out.println("ID: "+ pcbs.id);
+				System.out.println("Indice da Particao: "+ pcbs.memAlo);
+				System.out.println("PC: "+ pcbs.programCounter);
+				vm.mem.dump(mm.translateLogicalIndexToFisical(pcbs.memAlo, 0), (mm.translateLogicalIndexToFisical(pcbs.memAlo, 0)) + pcbs.memLimit);
+				cntrl = true;
+				} 
+			}
+			if(!cntrl) System.out.println("Processo nao existe");
+			}
+
+		
+
+		private void loadPrograms(Word [] p, int indexPart){
+			int count = 0;
+				for(int x = (mm.translateLogicalIndexToFisical(indexPart, count)); x < (mm.translateLogicalIndexToFisical(indexPart, p.length));x++){
+					vm.m[x].opc = p[count].opc;
+					vm.m[x].r1 = p[count].r1;
+					vm.m[x].r2 = p[count].r2;
+					vm.m[x].p = p[count].p;
+					count++;
+				}
 
 		}
 
@@ -617,8 +783,10 @@ public class Sistema {
     // -------------------------------------------------------------------------------------------------------
     // ------------------- instancia e testa sistema
 	public static void main(String args[]) {
-		Scanner sc = new Scanner(System.in);
+		
 		Sistema s = new Sistema();
+
+		/*Scanner sc = new Scanner(System.in);
 		
 		System.out.println("Seja bem vindo ao sistema!");
 		System.out.println("Selecione uma ação:");
@@ -650,7 +818,14 @@ public class Sistema {
 				s.loadAndExec(progs.PC);
 			default:
 				break;
-		}
+		} */
+
+		//s.exec(progs.progMinimo);
+		//s.exec(progs.fatorial);
+		//s.exec(progs.fibonacci10);
+		s.console();
+		//s.pm.dumpProcess();
+		//s.pm.createProcess(progs.progMinimo);
 		//s.loadAndExec(progs.fibonacci10);
 		//s.loadAndExec(progs.progMinimo);
 		//s.loadAndExec(progs.fatorial);
