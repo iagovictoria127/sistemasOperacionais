@@ -721,7 +721,7 @@ public class Sistema {
 				System.out.println("Sem espaço na memoria");
 				return false;
 			}
-			System.out.println("Processo criado com id: "+(id-1));
+			System.out.println("Processo criado com id: "+(id));
 			id++;
 			return true;
 		}
