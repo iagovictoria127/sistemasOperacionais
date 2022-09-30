@@ -195,7 +195,7 @@ public class Sistema {
 				return false;
 			};
 			irpt = Interrupts.intOverflow;
-			System.out.println("Interrupção: Overflow");
+			//System.out.println("Interrupção: Overflow");
 			return true;
 		}
 
@@ -203,7 +203,7 @@ public class Sistema {
 		private boolean testEndInval(int v){
 			if(mem.tamMem > v || mem.tamMem < v){
 				irpt = Interrupts.intEnderecoInvalido;
-				System.out.println("Interrupção: Endereço Inválido");
+				//System.out.println("Interrupção: Endereço Inválido");
 				return true;
 			}
 			return false;
@@ -216,7 +216,7 @@ public class Sistema {
 				return false;
 				}
 			}
-			System.out.println("Interrupção: Instrução Inválida");
+			//System.out.println("Interrupção: Instrução Inválida");
 			irpt = Interrupts.intInstrucaoInvalida; 
 			return true;
 		}
@@ -225,7 +225,7 @@ public class Sistema {
 		private boolean testParada(Opcode v){
 			if(v == ir.opc.STOP){
 
-				System.out.println("Interrupção: Stop");
+				//System.out.println("Interrupção: Stop");
 				irpt = Interrupts.intSTOP;
 				return true;
 			}
@@ -441,7 +441,7 @@ public class Sistema {
 				}
 			   // --------------------------------------------------------------------------------------------------
 			   // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
-				if (!(irpt == Interrupts.noInterrupt)) {   // existe interrupção
+				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap)) {   // existe interrupção
 					ih.handle(irpt,pc);                       // desvia para rotina de tratamento
 					break; // break sai do loop da cpu
 				}
@@ -493,20 +493,20 @@ public class Sistema {
 				System.out.println("                                               Interrupcao "+ irpt+ "   pc: "+pc);
 				switch(irpt){
 				case intSTOP:
+				System.out.println("Interrupcao: O programa chegou ao fim");
 				pm.deallocateProcess(pm.running.get(0).id);
-				System.out.println("Interrupção: O programa chegou ao fim");
 				break;
 				case intEnderecoInvalido:
+				System.out.println("Interrupcao: Acesso a endereco de memoria invalido");
 				pm.deallocateProcess(pm.running.get(0).id);
-				System.out.println("Interrupção: Acesso a endereco de memoria invalido");
 				break;
 				case intInstrucaoInvalida: 
+				System.out.println("Interrupcao: Instrucao de programa invalida");
 				pm.deallocateProcess(pm.running.get(0).id);
-				System.out.println("Interrupção: Instrucao de programa invalida");
 				break;
 				case intOverflow: 
+				System.out.println("Interrupcao Overflow");
 				pm.deallocateProcess(pm.running.get(0).id);
-				System.out.println("Interrupção: Overflow");
 				break;
 				}
 			}
@@ -522,12 +522,29 @@ public class Sistema {
 			pm.interrupted.add(pm.running.get(0));
 			pm.running.remove(0);
 			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
-			if(vm.cpu.reg[8] == 2){
-				int r9 = pm.interrupted.get(0).r[9];
-				System.out.println("Teste:" + r9);
+			if(vm.cpu.reg[8] == 1){
+				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
+				int mlimit = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, pm.interrupted.get(0).memLimit));
+				if(!(mlimit > mm.partitionSize)){
+				System.out.println("TRAP: Processo de id "+ pm.interrupted.get(0).id + " solicitando dados");
+				System.out.println("Digite um numero inteiro: ");
+				Scanner sc = new Scanner(System.in);
+				int op = sc.nextInt();
+				vm.m[r9].p = op;
+				}else {
+					vm.cpu.irpt = Interrupts.intOverflow;
+					System.out.println("Overflow! Endereco solicitado maior que o tamanho da particao");
+				}
+				vm.cpu.irpt = Interrupts.noInterrupt;
+				pm.running.add(pm.interrupted.get(0));
 			}
-			else if(vm.cpu.reg[8] == 1){
-
+			else if(vm.cpu.reg[8] == 2){
+				pm.interrupted.add(pm.running.get(0));
+				pm.running.remove(0);
+				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
+				System.out.println("TRAP: Mostrando na tela:");
+				System.out.println(vm.m[r9].p);
+				vm.cpu.irpt = Interrupts.noInterrupt;
 			}
 		}
     }
@@ -571,7 +588,7 @@ public class Sistema {
 
 	private void cleanPartition(ProcessControlBlock pcb){
 		int count = 0;
-		for(int x = (mm.translateLogicalIndexToFisical(pcb.memAlo , count)); x <(mm.translateLogicalIndexToFisical(pcb.memAlo , pcb.memLimit)); x++){
+		for(int x = (mm.translateLogicalIndexToFisical(pcb.memAlo , count)); x <(mm.translateLogicalIndexToFisical(pcb.memAlo , mm.partitionSize)); x++){
 				vm.m[x].opc = Opcode.___;
 				vm.m[x].r1 = -1;
 				vm.m[x].r2 = -1;
