@@ -492,9 +492,22 @@ public class Sistema {
             public void handle(Interrupts irpt, int pc) {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
 				System.out.println("                                               Interrupcao "+ irpt+ "   pc: "+pc);
 				switch(irpt){
-				case intSTOP: //System.out.println("Teste stop");
+				case intSTOP:
+				pm.deallocateProcess(pm.running.get(0).id);
+				System.out.println("Interrupção: O programa chegou ao fim");
 				break;
-				case intTrap: //System.out.println("Teste trap");
+				case intEnderecoInvalido:
+				pm.deallocateProcess(pm.running.get(0).id);
+				System.out.println("Interrupção: Acesso a endereco de memoria invalido");
+				break;
+				case intInstrucaoInvalida: 
+				pm.deallocateProcess(pm.running.get(0).id);
+				System.out.println("Interrupção: Instrucao de programa invalida");
+				break;
+				case intOverflow: 
+				pm.deallocateProcess(pm.running.get(0).id);
+				System.out.println("Interrupção: Overflow");
+				break;
 				}
 			}
 	}
@@ -506,7 +519,16 @@ public class Sistema {
             vm = _vm;
         }
         public void handle() {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
-            System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
+			pm.interrupted.add(pm.running.get(0));
+			pm.running.remove(0);
+			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
+			if(vm.cpu.reg[8] == 2){
+				int r9 = pm.interrupted.get(0).r[9];
+				System.out.println("Teste:" + r9);
+			}
+			else if(vm.cpu.reg[8] == 1){
+
+			}
 		}
     }
 
@@ -534,6 +556,30 @@ public class Sistema {
 				vm.mem.dump(0, p.length);            // dump da memoria com resultado
 	}
 	*/
+
+	private void loadPrograms(Word [] p, int indexPart){
+		int count = 0;
+			for(int x = (mm.translateLogicalIndexToFisical(indexPart, count)); x < (mm.translateLogicalIndexToFisical(indexPart, p.length));x++){
+				vm.m[x].opc = p[count].opc;
+				vm.m[x].r1 = p[count].r1;
+				vm.m[x].r2 = p[count].r2;
+				vm.m[x].p = p[count].p;
+				count++;
+			}
+
+	}
+
+	private void cleanPartition(ProcessControlBlock pcb){
+		int count = 0;
+		for(int x = (mm.translateLogicalIndexToFisical(pcb.memAlo , count)); x <(mm.translateLogicalIndexToFisical(pcb.memAlo , pcb.memLimit)); x++){
+				vm.m[x].opc = Opcode.___;
+				vm.m[x].r1 = -1;
+				vm.m[x].r2 = -1;
+				vm.m[x].p = -1;
+				count++;
+		}
+	}
+
 	private void exec(int id){
 		ProcessControlBlock pcb = pm.searchProcess(id);
 			if(pcb != null){
@@ -732,7 +778,9 @@ public class Sistema {
 					mm.dealocate(pcbs.memAlo);
 					pcbA.remove(pcbs);
 					ready.remove(pcbs.id);
+					cleanPartition(pcbs);
 					System.out.println("Processo com ID "+id+" desalocado");
+					return;
 				}
 			}
 			System.out.println("Processo noo existe");
@@ -760,20 +808,6 @@ public class Sistema {
 			}
 			if(!cntrl) System.out.println("Processo nao existe");
 			}
-
-		
-
-		private void loadPrograms(Word [] p, int indexPart){
-			int count = 0;
-				for(int x = (mm.translateLogicalIndexToFisical(indexPart, count)); x < (mm.translateLogicalIndexToFisical(indexPart, p.length));x++){
-					vm.m[x].opc = p[count].opc;
-					vm.m[x].r1 = p[count].r1;
-					vm.m[x].r2 = p[count].r2;
-					vm.m[x].p = p[count].p;
-					count++;
-				}
-
-		}
 
 	}
 
