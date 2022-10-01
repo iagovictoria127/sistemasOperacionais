@@ -103,7 +103,7 @@ public class Sistema {
 		 * @param partition índice da partição a ser desalocada
 		*/
 		public void dealocate(int partition) {
-			if (partition > 0 && partition < logicalMemory.length) {
+			if (partition >= 0 && partition < logicalMemory.length) {
 				logicalMemory[partition] = false;
 			}
 		}
@@ -183,11 +183,12 @@ public class Sistema {
 			debug =  _debug;        // se true, print da instrucao em execucao
 		}
 		
+		/* 
 		private boolean legal(int e) {                             // todo acesso a memoria tem que ser verificado
 			// ????
 			return true;
 		}
-
+		*/
 
 		// teste se houve overflow
 		private boolean testOverflow(int v) {                       // toda operacao matematica deve avaliar se ocorre overflow                      
@@ -200,13 +201,17 @@ public class Sistema {
 		}
 
 		// testa se o endereco e invalido
-		private boolean testEndInval(int v){
-			if(mem.tamMem > v || mem.tamMem < v){
+		private boolean legal(int v){
+			int endP = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo, v);
+			int endLimit = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo, 0) + mm.partitionSize;
+			if( endP > endLimit ){
 				irpt = Interrupts.intEnderecoInvalido;
 				//System.out.println("Interrupção: Endereço Inválido");
-				return true;
+				System.out.println(endP);
+				System.out.println(endLimit);
+				return false;
 			}
-			return false;
+			return true;
 		}
 
 		// testa se a instrucao e valida
@@ -524,27 +529,22 @@ public class Sistema {
 			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
 			if(vm.cpu.reg[8] == 1){
 				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
-				int mlimit = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, pm.interrupted.get(0).memLimit));
-				if(!(mlimit > mm.partitionSize)){
 				System.out.println("TRAP: Processo de id "+ pm.interrupted.get(0).id + " solicitando dados");
 				System.out.println("Digite um numero inteiro: ");
 				Scanner sc = new Scanner(System.in);
 				int op = sc.nextInt();
 				vm.m[r9].p = op;
-				}else {
-					vm.cpu.irpt = Interrupts.intOverflow;
-					System.out.println("Overflow! Endereco solicitado maior que o tamanho da particao");
-				}
 				vm.cpu.irpt = Interrupts.noInterrupt;
 				pm.running.add(pm.interrupted.get(0));
+				pm.interrupted.remove(0);
 			}
 			else if(vm.cpu.reg[8] == 2){
-				pm.interrupted.add(pm.running.get(0));
-				pm.running.remove(0);
 				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
 				System.out.println("TRAP: Mostrando na tela:");
 				System.out.println(vm.m[r9].p);
 				vm.cpu.irpt = Interrupts.noInterrupt;
+				pm.running.add(pm.interrupted.get(0));
+				pm.interrupted.remove(0);
 			}
 		}
     }
@@ -588,7 +588,8 @@ public class Sistema {
 
 	private void cleanPartition(ProcessControlBlock pcb){
 		int count = 0;
-		for(int x = (mm.translateLogicalIndexToFisical(pcb.memAlo , count)); x <(mm.translateLogicalIndexToFisical(pcb.memAlo , mm.partitionSize)); x++){
+		int endIni = mm.translateLogicalIndexToFisical(pcb.memAlo , count);
+		for(int x = endIni; x < (endIni + mm.partitionSize); x++){
 				vm.m[x].opc = Opcode.___;
 				vm.m[x].r1 = -1;
 				vm.m[x].r2 = -1;
@@ -605,6 +606,7 @@ public class Sistema {
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria nestas posicoes				
 		vm.cpu.setContext(0, vm.tamMem - 1, end, pcb.memAlo, pcb.r);      // seta estado da cpu ]
 				//System.out.println("---------------------------------- inicia execucao ");
+		pm.ready.remove(pcb);
 		pm.running.add(pcb);
 		vm.cpu.run();                                // cpu roda programa ate parar	
 				//System.out.println("---------------------------------- memoria apos execucao ");
@@ -794,7 +796,7 @@ public class Sistema {
 				if(pcbs.id == id){
 					mm.dealocate(pcbs.memAlo);
 					pcbA.remove(pcbs);
-					ready.remove(pcbs.id);
+					//ready.remove(pcbs.id);
 					cleanPartition(pcbs);
 					System.out.println("Processo com ID "+id+" desalocado");
 					return;
