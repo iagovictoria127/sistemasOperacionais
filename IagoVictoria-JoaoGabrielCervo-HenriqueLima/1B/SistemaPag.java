@@ -236,11 +236,12 @@ public class SistemaPag {
 			return false;
 		}*/
 
-		private boolean legal(int v){
-			int endP = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], v%mm.pageSize);
+		private boolean legal(int pag, int v){
+
+			int endP = mm.translateLogicalIndexToFisical(pag, v%mm.pageSize);
 			int pagLength = pm.running.get(0).memAlo.length;
 			//System.out.println(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], 0)+"Test End");
-			int endLimit = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], 0) + mm.pageSize*pagLength;
+			int endLimit = mm.translateLogicalIndexToFisical(pag, 0) + mm.pageSize;
 			if( endP > endLimit ){
 				irpt = Interrupts.intEnderecoInvalido;
 				//System.out.println("Interrupção: Endereço Inválido");
@@ -284,12 +285,21 @@ public class SistemaPag {
 			reg = _reg;                     // reset da interrupcao registrada  
 		}
 		
-		public void run() { 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
+		public void run() {
+			int count = 0;
+			int paglim = (pc + mm.pageSize) -1 ; 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
 			while (true) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
 			   
-				if (legal(pc)) { 	// pc valido
+			   indexpart = pag[count];
+			   if(pc > paglim){
+				count++;
+				if(count >= pag.length) { break; }
+				indexpart = pag[count];
+				pc = mm.translateLogicalIndexToFisical(indexpart, 0);
+			   }
+				if (legal(indexpart, pc)) { 	// pc valido
 					ir = m[pc]; 	// <<<<<<<<<<<<           busca posicao da memoria apontada por pc, guarda em ir
 					pm.running.get(0).programCounter = pc;
 					if (debug) { System.out.print("                               pc: "+pc+"       exec: ");  mem.dump(ir); }
@@ -305,32 +315,32 @@ public class SistemaPag {
 							break;
 
 						case LDD: // Rd <- [A]
-						    if (legal(ir.p)) {
+						    if (legal(indexpart, ir.p)) {
 							   reg[ir.r1] = m[ir.p].p;
 							   pc++;
 						    }
 						    break;
 
 						case LDX: // RD <- [RS] // NOVA
-							if (legal(reg[ir.r2])) {
+							if (legal(indexpart, reg[ir.r2])) {
 								reg[ir.r1] = m[reg[ir.r2]].p;
 								pc++;
 							}
 							break;
 
 						case STD: // [A] ← Rs
-						    if (legal(ir.p)) {
-							    m[(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], ir.p))].opc = Opcode.DATA;
-							    m[(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], ir.p))].p = reg[ir.r1];
+						    if (legal(indexpart, ir.p)) {
+							    m[(mm.translateLogicalIndexToFisical(indexpart, ir.p))].opc = Opcode.DATA;
+							    m[(mm.translateLogicalIndexToFisical(indexpart, ir.p))].p = reg[ir.r1];
 							    pc++;
 								//mem.dump(16, 48);
 							};
 						    break;
 
 						case STX: // [Rd] ←Rs
-						    if (legal(reg[ir.r1])) {
-							    m[(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], reg[ir.r1]))].opc = Opcode.DATA;      
-							    m[(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], reg[ir.r1]))].p = reg[ir.r2];          
+						    if (legal(indexpart, reg[ir.r1])) {
+							    m[(mm.translateLogicalIndexToFisical(indexpart, reg[ir.r1]))].opc = Opcode.DATA;      
+							    m[(mm.translateLogicalIndexToFisical(indexpart, reg[ir.r1]))].p = reg[ir.r2];          
 								pc++;
 							};
 							break;
@@ -613,16 +623,24 @@ public class SistemaPag {
 	}
 	*/
 
-	private void loadPrograms(Word [] p, int indexPart){
+	private void loadPrograms(Word [] p, int indexPart, ProcessControlBlock pcb){
 		int count = 0;
-			for(int x = (mm.translateLogicalIndexToFisical(indexPart, count)); x < (mm.translateLogicalIndexToFisical(indexPart, p.length));x++){
+		int count2;
+		int pag;
+		for(int z = 0; z < pcb.memAlo.length; z++){
+			count2 = 0;
+			pag = pcb.memAlo[z];
+			for(int x = (mm.translateLogicalIndexToFisical(pag, count2)); (x < mm.translateLogicalIndexToFisical(pag, pcb.memLimit)) && (x < (mm.translateLogicalIndexToFisical(pag, 0)+ mm.pageSize)); x++){
+				if(count < pcb.memLimit){
 				vm.m[x].opc = p[count].opc;
 				vm.m[x].r1 = p[count].r1;
 				vm.m[x].r2 = p[count].r2;
 				vm.m[x].p = p[count].p;
+				}
 				count++;
+				count2++;
 			}
-
+		}
 	}
 
 	private void cleanPartition(ProcessControlBlock pcb){
@@ -687,7 +705,6 @@ public class SistemaPag {
 							System.out.println("3- Fatorial");
 							System.out.println("4- FatorialTrap");
 							System.out.println("5- FibonacciTrap");
-							System.out.println("6- Bubble Sort");
 							System.out.println("0- Voltar.");
 								
 								programs = sc.nextInt();
@@ -819,7 +836,7 @@ public class SistemaPag {
 				pcbA.add(pcb);
 				ready.add(pcb);
 				//running.add(pcb);
-				loadPrograms(w, memA[0]);
+				loadPrograms(w, memA[0], pcb);
 
 			} else{
 				System.out.println("Sem espaço na memoria");
