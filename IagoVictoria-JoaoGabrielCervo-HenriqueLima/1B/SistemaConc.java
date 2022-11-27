@@ -8,6 +8,7 @@
 // Funcionalidades de carga, execução e dump de memória
 
 import java.util.*;
+import java.util.concurrent.Semaphore;
 
 public class SistemaConc {
 	
@@ -163,10 +164,12 @@ public class SistemaConc {
 	}
 
 	public enum Interrupts {               // possiveis interrupcoes que esta CPU gera
-		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap, intEscl;
+		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap, intEscl, intIO;
 	}
 
-	public class CPU {
+	public class CPU extends Thread {
+		Semaphore semcpu = new Semaphore(0);
+		
 		private int maxInt; // valores maximo e minimo para inteiros nesta cpu
 		private int minInt;
 		private int indexpart;			// característica do processador: contexto da CPU ...
@@ -177,7 +180,8 @@ public class SistemaConc {
 		private Interrupts irpt; 	// durante instrucao, interrupcao pode ser sinalizada
 		private int base;   		// base e limite de acesso na memoria
 		private int limite; // por enquanto toda memoria pode ser acessada pelo processo rodando
-		private int cycles;					// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
+		private int cycles;	
+		private boolean flag;				// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
 							// nas proximas versoes isto pode modificar
 
 		private Memory mem;               // mem tem funcoes de dump e o array m de memória 'fisica' 
@@ -282,16 +286,26 @@ public class SistemaConc {
 			pag = _pag;                                           // limite e pc (deve ser zero nesta versao)
 			irpt = Interrupts.noInterrupt; 
 			indexpart = _indexpart; 
-			reg = _reg;                     // reset da interrupcao registrada  
+			reg = _reg; 
+			flag = false;                    // reset da interrupcao registrada  
 		}
 		
-		public void run() {
+		public void run(){
 			int count = 0;
 			int paglim = (pc + mm.pageSize) -1 ; 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
 			//System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 			while (true) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
+
+			 //  try {
+			//	semcpu.acquire();
+			//} catch (InterruptedException e) {
+			//	e.printStackTrace();
+				// handle the exception...        
+				// For example consider calling Thread.currentThread().interrupt(); here.
+		//	}
+
 			   indexpart = pag[count];
 			   if(pc > paglim){
 				count++;
@@ -483,8 +497,8 @@ public class SistemaConc {
 					// Chamada de sistema
 					    case TRAP:
 						     irpt = Interrupts.intTrap;
-						     sysCall.handle();            // <<<<< aqui desvia para rotina de chamada de sistema, no momento so temos IO
 							 pc++;
+						     trapCalling();            // <<<<< aqui desvia para rotina de chamada de sistema, no momento so temos IO
 						     break;
 
 					// Inexistente
@@ -524,7 +538,8 @@ public class SistemaConc {
 		public int tamMem;    
         public Word[] m;  
 		public Memory mem;   
-        public CPU cpu;    
+        public CPU cpu;
+    
 
         public VM(InterruptHandling ih, SysCallHandling sysCall){   
 		 // vm deve ser configurada com endereço de tratamento de interrupcoes e de chamadas de sistema
@@ -583,42 +598,64 @@ public class SistemaConc {
 				changeContext();
 				//System.out.println(pm.running.get(0).programCounter);
 				break;
+				case intIO:
+				ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
+				pm.ready.add(pm.blocked.get(0));
+				pm.blocked.remove(0);
+				for(ProcessControlBlock auxp: pm.blocked){
+					aux.add(auxp);
+				}
+				pm.blocked = aux;
+				vm.cpu.irpt = Interrupts.noInterrupt;
+				vm.cpu.run();
+				break;
 				}
 			}
 	}
 
     // ------------------- C H A M A D A S  D E  S I S T E M A  - rotinas de tratamento ----------------------
-    public class SysCallHandling {
-        private VM vm;
+    
+
+	public void trapCalling(){
+		vm.cpu.flag = true;
+		 changeContext();
+		 sysCall.handle();
+		// sysCall.iosem.release();
+	}
+
+	public class SysCallHandling extends Thread{
+		private Semaphore iosem = new Semaphore(0);
+		private ArrayList<Integer> processId = new ArrayList<Integer>();
+		private VM vm;
         public void setVM(VM _vm){
             vm = _vm;
         }
         public void handle() {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
-			pm.interrupted.add(pm.running.get(0));
-			pm.running.remove(0);
-			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
-			if(vm.cpu.reg[8] == 1){
-				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo[0], 0)) + pm.interrupted.get(0).r[9];
-				System.out.println("TRAP: Processo de id "+ pm.interrupted.get(0).id + " solicitando dados");
+
+
+			ProcessControlBlock pcb = pm.blocked.get(0);
+			//System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
+			if(pcb.r[8] == 1){
+				int r9 = (mm.translateLogicalIndexToFisical(pm.blocked.get(0).memAlo[0], 0)) + pm.blocked.get(0).r[9];
+				System.out.println("TRAP: Processo de id "+ pm.blocked.get(0).id + " solicitando dados");
 				System.out.println("Digite um numero inteiro: ");
 				Scanner sc = new Scanner(System.in);
 				int op = sc.nextInt();
 				vm.m[r9].p = op;
-				vm.cpu.irpt = Interrupts.noInterrupt;
-				pm.running.add(pm.interrupted.get(0));
-				pm.interrupted.remove(0);
+				vm.cpu.irpt = Interrupts.intIO;
+				processId.remove(Integer.valueOf(pcb.id));
 			}
-			else if(vm.cpu.reg[8] == 2){
-				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo[0], 0)) + pm.interrupted.get(0).r[9];
+			else if(pcb.r[8]  == 2){
+				int r9 = (mm.translateLogicalIndexToFisical(pm.blocked.get(0).memAlo[0], 0)) + pm.blocked.get(0).r[9];
 				System.out.println("TRAP: Mostrando na tela:");
 				System.out.println(vm.m[r9].p);
-				vm.cpu.irpt = Interrupts.noInterrupt;
-				pm.running.add(pm.interrupted.get(0));
-				pm.interrupted.remove(0);
+				vm.cpu.irpt = Interrupts.intIO;
+				processId.remove(Integer.valueOf(pcb.id));
+				}
 			}
-		}
-    }
-
+		
+    	}
+	
     // ------------------ U T I L I T A R I O S   D O   S I S T E M A -----------------------------------------
 	// ------------------ load é invocado a partir de requisição do usuário
 
@@ -634,11 +671,20 @@ public class SistemaConc {
 
 	private void changeContext(){
 		ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
-		if(pm.running.size() > 0){
+		if(pm.running.size() > 0 && vm.cpu.flag == false){
 		pm.running.get(0).programCounter = vm.cpu.pc;
 		pm.running.get(0).r = vm.cpu.reg;
 		pm.ready.add(pm.running.get(0));
 		pm.running.remove(0);
+		} else if(vm.cpu.flag == true) {
+			int r9 = (mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], 0)) + vm.cpu.reg[9];
+		System.out.println(vm.m[r9].p);
+		pm.running.get(0).programCounter = vm.cpu.pc;
+		pm.running.get(0).r = vm.cpu.reg;
+		sysCall.processId.add(pm.running.get(0).id);
+		pm.blocked.add(pm.running.get(0));
+		pm.running.remove(0);
+		
 		}
 		pm.running.add(pm.ready.get(0));
 		pm.ready.remove(0);
@@ -652,8 +698,9 @@ public class SistemaConc {
 		}
 		vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).memAlo[0], pm.running.get(0).r);
 		vm.cpu.pc = pm.running.get(0).programCounter;
+		vm.cpu.flag = false;
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
-
+		//vm.cpu.semcpu.release();
 		//vm.cpu.pag = pm.running.get(0).memAlo;
 		//vm.cpu.indexpart = pm.running.get(0).memAlo[0];
 		//vm.cpu.reg = pm.running.get(0).r;
@@ -716,12 +763,15 @@ public class SistemaConc {
 		pm.running.add(pcb);
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		vm.cpu.run();                                // cpu roda programa ate parar	
-				//System.out.println("---------------------------------- memoria apos execucao ");
+		//vm.cpu.start();
+		//sysCall.start();
+		//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
 		} else {
 			System.out.println("Processo nao encontrado");
 		}
 	}
+
 
 	public void console(){
 		int op = -1;
@@ -749,13 +799,13 @@ public class SistemaConc {
 		
 			switch (op) {
 						case 1:
-							pm.createProcess(progs.fibonacci10);
+							//pm.createProcess(progs.fibonacci10);
 							pm.createProcess(progs.progMinimo);
 							pm.createProcess(progs.fatorial);
 							pm.createProcess(progs.fatorialTRAP);
 							//pm.createProcess(progs.fibonacciTRAP);
 							System.out.println("Processos criados!");
-						
+							//vm.cpu.start();
 							break;
 						case 2:
 							System.out.println("Digite o número do processo: ");
@@ -843,6 +893,7 @@ public class SistemaConc {
 		public ArrayList<ProcessControlBlock> running;
 		public ArrayList<ProcessControlBlock> interrupted;
 		public ArrayList<ProcessControlBlock> ready;
+		public ArrayList<ProcessControlBlock> blocked;
 		public int id = 0;
 
 		public ProcessManager(){
@@ -850,6 +901,7 @@ public class SistemaConc {
 			running = new ArrayList<ProcessControlBlock>();
 			interrupted = new ArrayList<ProcessControlBlock>();
 			ready = new ArrayList<ProcessControlBlock>();
+			blocked = new ArrayList<ProcessControlBlock>();
 		}
 
 
