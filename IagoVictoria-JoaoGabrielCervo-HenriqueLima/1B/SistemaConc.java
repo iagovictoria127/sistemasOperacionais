@@ -509,18 +509,20 @@ public class SistemaConc {
 				}
 
 				cycles++;
-				if(cycles >= 5){
+				if(cycles >= 5 ){
 					irpt = Interrupts.intEscl;
 					ih.handle(irpt,pc);
 					count = 0;
 					paglim = (pc + mm.pageSize) -1 ;
 				}
+
+
 			   // --------------------------------------------------------------------------------------------------
 			   // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
 				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap || irpt ==  Interrupts.intEscl)) {   // existe interrupção
 					ih.handle(irpt,pc);                       // desvia para rotina de tratamento
 					break; // break sai do loop da cpu
-				}
+			}
 			}  // FIM DO CICLO DE UMA INSTRUÇÃO
 		}      
 	}
@@ -763,7 +765,6 @@ public class SistemaConc {
 		pm.running.add(pcb);
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		vm.cpu.run();                                // cpu roda programa ate parar	
-		//vm.cpu.start();
 		//sysCall.start();
 		//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -805,7 +806,7 @@ public class SistemaConc {
 							pm.createProcess(progs.fatorialTRAP);
 							//pm.createProcess(progs.fibonacciTRAP);
 							System.out.println("Processos criados!");
-							//vm.cpu.start();
+							//vm.cpu.run();
 							break;
 						case 2:
 							System.out.println("Digite o número do processo: ");
@@ -1009,6 +1010,7 @@ public class SistemaConc {
 		//s.exec(progs.progMinimo);
 		//s.exec(progs.fatorial);
 		//s.exec(progs.fibonacci10);
+		s.vm.cpu.start();
 		s.console();
 		//s.pm.dumpProcess();
 		//s.pm.createProcess(progs.progMinimo);
