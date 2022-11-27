@@ -8,9 +8,8 @@
 // Funcionalidades de carga, execução e dump de memória
 
 import java.util.*;
-import java.util.function.Function;
 
-public class Sistema {
+public class SistemaEscl {
 	
 	// -------------------------------------------------------------------------------------------------------
 	// --------------------- H A R D W A R E - definicoes de HW ---------------------------------------------- 
@@ -46,77 +45,92 @@ public class Sistema {
 	//GERENTE DE MEMÓRIA
 	public class MemoryManager{
     
-		int fisicalMemorySize;
-		int partitionSize;
-		int numOfPartitions;
+		int maxMemorySize;
+		int pageSize;
+		int numOfPages;
+		int numOfAvailablePages;
 		boolean[] logicalMemory;
 		
 		/**
 		 * Inicializa a partir dos parâmetros. Número de partições é calculado como: M/P, arredondado para cima
-		 * @param m Quantidade de palavras na memória
-		 * @param p Tamanho de cada partição
+		 * @param m Tamanho máximo da memória
+		 * @param p Tamanho de página
 		 */
 		public MemoryManager(int m, int p) {
-			fisicalMemorySize = m;
-			partitionSize = p;
-			numOfPartitions = (int) Math.ceil(m/p);
-			logicalMemory = new boolean[numOfPartitions];
+			maxMemorySize = m;
+			pageSize = p;
+			numOfPages = (int) Math.ceil(m/p);
+			numOfAvailablePages = numOfPages;
+			logicalMemory = new boolean[numOfPages];
 		}
 		
-		public boolean allocable(int numOfWords){
-			if(numOfWords > partitionSize) {
-				return false;
-			} 
-	
-			for(int i = 0; i < logicalMemory.length; i++) {
-				boolean isFrameOccupied = logicalMemory[i];
-				if (isFrameOccupied) continue;
-				return true;
-			}
-	
-			return false;
-
+		/**
+		 * Verifica se é possível alocar o programa na memória
+		 * @param numOfWords numero de palavras do programa
+		 * @return true se possível, false caso contrário
+		*/
+		public boolean allocable(int numOfWords) {
+			int numOfPagesForProccess = (int) Math.ceil(numOfWords / pageSize);
+			return numOfPagesForProccess <= numOfAvailablePages;
 		}
 
 		/** 
-		 * Aloca número de palavras em uma partição, e retorna onde foi salvo
+		 * Aloca número de palavras em páginas, e retorna onde foi salvo
 		 * @param numOfWords Quantidade de palavras do programa para alocar
-		 * @return índice da partição alocada, ou -1 se não conseguir alocar 
+		 * @return índices das páginas alocadas, ou [-1] no índice 0 se não conseguir alocar 
 		*/
-		public int alocate(int numOfWords) {
-			if(numOfWords > partitionSize) {
-				return -1;
+		public int[] alocate(int numOfWords) {	
+			if(!allocable(numOfWords)) {
+				int[] dullArray = { -1 };
+				return dullArray;
 			} 
+			int numOfPagesForProccess = 0;
+			if(numOfWords % pageSize == 0){
+				numOfPagesForProccess = (numOfWords / pageSize);
+			} else {
+				numOfPagesForProccess = (numOfWords / pageSize) + 1;
+			}
+			int[] pagesIndex = new int[numOfPagesForProccess];
+			int pagesCount = 0;
 	
 			for(int i = 0; i < logicalMemory.length; i++) {
-				boolean isFrameOccupied = logicalMemory[i];
-				if (isFrameOccupied) continue;
+				if(numOfPagesForProccess <= 0) { break; }
+				
+				boolean isPageOccupied = logicalMemory[i];
+				if (isPageOccupied) { continue; }
+
 				logicalMemory[i] = true;
-				return i;
+				pagesIndex[pagesCount] = i;
+				//System.out.println(pagesCount);
+				pagesCount++;
+				numOfAvailablePages--;
+				numOfPagesForProccess--;
 			}
-	
-			return -1;
+			return pagesIndex;
 		}
 	
 		 /** 
-		 * Desaloca uma partição da memória lógica
-		 * @param partition índice da partição a ser desalocada
+		 * Desaloca páginas da memóra lógica
+		 * @param pages índices das páginas a ser desalocadas
 		*/
-		public void dealocate(int partition) {
-			if (partition >= 0 && partition < logicalMemory.length) {
-				logicalMemory[partition] = false;
+		public void dealocate(int[] pages) {
+			for (int page : pages) {
+				if(page < 0 || page >= logicalMemory.length) { continue; }
+				logicalMemory[page] = false;
+				numOfAvailablePages++;
 			}
 		}
 	
 		/**
 		 * Traduz endereço lógico de uma partição para físico
-		 * @param partition índice da partição a ser usada
-		 * @param logicalIndex endereço lógico da posição dentro da partição
+		 * @param index índice da page a ser usada
+		 * @param offset endereço lógico da posição dentro da page
 		 * @return endereço físico a ser acessado, ou -1 caso os parâmetros sejam inválidos
 		 */
-		public int translateLogicalIndexToFisical(int partition, int logicalIndex) {
-			if (logicalIndex < 0 || logicalIndex >= partitionSize) return -1;
-			return (partition * partitionSize) + logicalIndex;
+		public int translateLogicalIndexToFisical(int index, int offset) {
+			if (index < 0 || offset < 0 || index >= logicalMemory.length) { return -1; }
+			
+			return (index * pageSize) + offset;
 		}
 	}
 	
@@ -149,7 +163,7 @@ public class Sistema {
 	}
 
 	public enum Interrupts {               // possiveis interrupcoes que esta CPU gera
-		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap;
+		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap, intEscl;
 	}
 
 	public class CPU {
@@ -158,11 +172,12 @@ public class Sistema {
 		private int indexpart;			// característica do processador: contexto da CPU ...
 		private int pc; 			// ... composto de program counter,
 		private Word ir; 			// instruction register,
-		private int[] reg;       	// registradores da CPU
+		private int[] reg; 
+		private int[] pag;      	// registradores da CPU
 		private Interrupts irpt; 	// durante instrucao, interrupcao pode ser sinalizada
 		private int base;   		// base e limite de acesso na memoria
 		private int limite; // por enquanto toda memoria pode ser acessada pelo processo rodando
-							// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
+		private int cycles;					// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
 							// nas proximas versoes isto pode modificar
 
 		private Memory mem;               // mem tem funcoes de dump e o array m de memória 'fisica' 
@@ -201,16 +216,39 @@ public class Sistema {
 		}
 
 		// testa se o endereco e invalido
-		private boolean legal(int v){
-			int endP = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo, v);
-			int endLimit = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo, 0) + mm.partitionSize;
+		/*private boolean legal(int v){
+			int endP = mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], v);
+			int x;
+			int runningLen = pm.running.get(0).memAlo.length;
+			for(x = 0; x < runningLen; x++){
+				int endLimit = (mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[x], 0)) + mm.pageSize;
+				if( endP <= endLimit && endP >= (endLimit - mm.pageSize) ){
+					System.out.println(pm.running.get(0).memAlo[x]);
+				System.out.println(pm.running.get(0).memAlo.length);
+				System.out.println(endP);
+				System.out.println(endLimit);
+					return true;
+				}
+				//System.out.println(mm.pageSize);
+			}
+			irpt = Interrupts.intEnderecoInvalido;
+
+			return false;
+		}*/
+
+		private boolean legal(int pag, int v){
+
+			int endP = mm.translateLogicalIndexToFisical(pag, v%mm.pageSize);
+			int pagLength = pm.running.get(0).memAlo.length;
+			//System.out.println(mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], 0)+"Test End");
+			int endLimit = mm.translateLogicalIndexToFisical(pag, 0) + mm.pageSize;
 			if( endP > endLimit ){
 				irpt = Interrupts.intEnderecoInvalido;
 				//System.out.println("Interrupção: Endereço Inválido");
-				System.out.println(endP);
-				System.out.println(endLimit);
 				return false;
 			}
+			//System.out.println(endP);
+			//System.out.println(endLimit);
 			return true;
 		}
 
@@ -237,21 +275,31 @@ public class Sistema {
 			return false;
 		}
 
-		public void setContext(int _base, int _limite, int _pc, int _indexpart, int _reg[]) {  // no futuro esta funcao vai ter que ser 
+		public void setContext(int _base, int _limite, int[] _pag, int _indexpart, int _reg[]) {  // no futuro esta funcao vai ter que ser 
 			base = _base;                                          // expandida para setar todo contexto de execucao,
 			limite = _limite;									   // agora,  setamos somente os registradores base,
-			pc = _pc;                                              // limite e pc (deve ser zero nesta versao)
+			pc = mm.translateLogicalIndexToFisical(_pag[0], 0);  
+			pag = _pag;                                           // limite e pc (deve ser zero nesta versao)
 			irpt = Interrupts.noInterrupt; 
 			indexpart = _indexpart; 
 			reg = _reg;                     // reset da interrupcao registrada  
 		}
 		
-		public void run() { 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
+		public void run() {
+			int count = 0;
+			int paglim = (pc + mm.pageSize) -1 ; 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
+			//System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 			while (true) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
-			   
-				if (legal(pc)) { 	// pc valido
+			   indexpart = pag[count];
+			   if(pc > paglim){
+				count++;
+				if(count >= pag.length) { break; }
+				indexpart = pag[count];
+				pc = mm.translateLogicalIndexToFisical(indexpart, 0);
+			   }
+				if (legal(indexpart, pc)) { 	// pc valido
 					ir = m[pc]; 	// <<<<<<<<<<<<           busca posicao da memoria apontada por pc, guarda em ir
 					pm.running.get(0).programCounter = pc;
 					if (debug) { System.out.print("                               pc: "+pc+"       exec: ");  mem.dump(ir); }
@@ -267,31 +315,32 @@ public class Sistema {
 							break;
 
 						case LDD: // Rd <- [A]
-						    if (legal(ir.p)) {
+						    if (legal(indexpart, ir.p)) {
 							   reg[ir.r1] = m[ir.p].p;
 							   pc++;
 						    }
 						    break;
 
 						case LDX: // RD <- [RS] // NOVA
-							if (legal(reg[ir.r2])) {
+							if (legal(indexpart, reg[ir.r2])) {
 								reg[ir.r1] = m[reg[ir.r2]].p;
 								pc++;
 							}
 							break;
 
 						case STD: // [A] ← Rs
-						    if (legal(ir.p)) {
-							    m[ir.p].opc = Opcode.DATA;
-							    m[ir.p].p = reg[ir.r1];
+						    if (legal(indexpart, ir.p)) {
+							    m[(mm.translateLogicalIndexToFisical(indexpart, ir.p))].opc = Opcode.DATA;
+							    m[(mm.translateLogicalIndexToFisical(indexpart, ir.p))].p = reg[ir.r1];
 							    pc++;
+								//mem.dump(16, 48);
 							};
 						    break;
 
 						case STX: // [Rd] ←Rs
-						    if (legal(reg[ir.r1])) {
-							    m[reg[ir.r1]].opc = Opcode.DATA;      
-							    m[reg[ir.r1]].p = reg[ir.r2];          
+						    if (legal(indexpart, reg[ir.r1])) {
+							    m[(mm.translateLogicalIndexToFisical(indexpart, reg[ir.r1]))].opc = Opcode.DATA;      
+							    m[(mm.translateLogicalIndexToFisical(indexpart, reg[ir.r1]))].p = reg[ir.r2];          
 								pc++;
 							};
 							break;
@@ -424,7 +473,6 @@ public class Sistema {
 
 					// outras
 						case STOP: // por enquanto, para execucao
-						vm.mem.dump(pm.running.get(0).memAlo, pm.running.get(0).memAlo + pm.running.get(0).memLimit); 
 						testParada(ir.opc);
 							break;
 
@@ -445,9 +493,17 @@ public class Sistema {
 							break;
 					}
 				}
+
+				cycles++;
+				if(cycles >= 5){
+					irpt = Interrupts.intEscl;
+					ih.handle(irpt,pc);
+					count = 0;
+					paglim = (pc + mm.pageSize) -1 ;
+				}
 			   // --------------------------------------------------------------------------------------------------
 			   // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
-				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap)) {   // existe interrupção
+				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap || irpt ==  Interrupts.intEscl)) {   // existe interrupção
 					ih.handle(irpt,pc);                       // desvia para rotina de tratamento
 					break; // break sai do loop da cpu
 				}
@@ -501,6 +557,11 @@ public class Sistema {
 				case intSTOP:
 				System.out.println("Interrupcao: O programa chegou ao fim");
 				pm.deallocateProcess(pm.running.get(0).id);
+				//pm.running.remove(pm.running.get(0).id);
+				if(pm.ready.size() > 0){
+					changeContext();
+					vm.cpu.run();
+				}
 				break;
 				case intEnderecoInvalido:
 				System.out.println("Interrupcao: Acesso a endereco de memoria invalido");
@@ -513,6 +574,14 @@ public class Sistema {
 				case intOverflow: 
 				System.out.println("Interrupcao Overflow");
 				pm.deallocateProcess(pm.running.get(0).id);
+				break;
+				case intEscl:
+				//System.out.println("Interrupcao Escalonamento");
+				//System.out.println(pm.running.get(0).id);
+				
+				//vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).programCounter, pm.running.get(0).r);
+				changeContext();
+				//System.out.println(pm.running.get(0).programCounter);
 				break;
 				}
 			}
@@ -529,7 +598,7 @@ public class Sistema {
 			pm.running.remove(0);
 			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
 			if(vm.cpu.reg[8] == 1){
-				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
+				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo[0], 0)) + pm.interrupted.get(0).r[9];
 				System.out.println("TRAP: Processo de id "+ pm.interrupted.get(0).id + " solicitando dados");
 				System.out.println("Digite um numero inteiro: ");
 				Scanner sc = new Scanner(System.in);
@@ -540,7 +609,7 @@ public class Sistema {
 				pm.interrupted.remove(0);
 			}
 			else if(vm.cpu.reg[8] == 2){
-				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo, 0)) + pm.interrupted.get(0).r[9];
+				int r9 = (mm.translateLogicalIndexToFisical(pm.interrupted.get(0).memAlo[0], 0)) + pm.interrupted.get(0).r[9];
 				System.out.println("TRAP: Mostrando na tela:");
 				System.out.println(vm.m[r9].p);
 				vm.cpu.irpt = Interrupts.noInterrupt;
@@ -563,6 +632,34 @@ public class Sistema {
 		loadProgram(p, vm.m);
 	}
 
+	private void changeContext(){
+		ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
+		if(pm.running.size() > 0){
+		pm.running.get(0).programCounter = vm.cpu.pc;
+		pm.running.get(0).r = vm.cpu.reg;
+		pm.ready.add(pm.running.get(0));
+		pm.running.remove(0);
+		}
+		pm.running.add(pm.ready.get(0));
+		pm.ready.remove(0);
+		for(ProcessControlBlock auxp: pm.ready){
+			aux.add(auxp);
+			//System.out.println(auxp.id);
+		}
+		pm.ready = aux;
+		if(!(vm.cpu.irpt == Interrupts.intSTOP)){
+			vm.cpu.cycles = 0;
+		}
+		vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).memAlo[0], pm.running.get(0).r);
+		vm.cpu.pc = pm.running.get(0).programCounter;
+		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
+
+		//vm.cpu.pag = pm.running.get(0).memAlo;
+		//vm.cpu.indexpart = pm.running.get(0).memAlo[0];
+		//vm.cpu.reg = pm.running.get(0).r;
+		//vm.cpu.irpt = Interrupts.noInterrupt;
+
+	}
 	/*private void loadAndExec(Word[] p){
 		loadProgram(p);    // carga do programa na memoria
 				System.out.println("---------------------------------- programa carregado na memoria");
@@ -575,22 +672,30 @@ public class Sistema {
 	}
 	*/
 
-	private void loadPrograms(Word [] p, int indexPart){
+	private void loadPrograms(Word [] p, int indexPart, ProcessControlBlock pcb){
 		int count = 0;
-			for(int x = (mm.translateLogicalIndexToFisical(indexPart, count)); x < (mm.translateLogicalIndexToFisical(indexPart, p.length));x++){
+		int count2;
+		int pag;
+		for(int z = 0; z < pcb.memAlo.length; z++){
+			count2 = 0;
+			pag = pcb.memAlo[z];
+			for(int x = (mm.translateLogicalIndexToFisical(pag, count2)); (x < mm.translateLogicalIndexToFisical(pag, pcb.memLimit)) && (x < (mm.translateLogicalIndexToFisical(pag, 0)+ mm.pageSize)); x++){
+				if(count < pcb.memLimit){
 				vm.m[x].opc = p[count].opc;
 				vm.m[x].r1 = p[count].r1;
 				vm.m[x].r2 = p[count].r2;
 				vm.m[x].p = p[count].p;
+				}
 				count++;
+				count2++;
 			}
-
+		}
 	}
 
 	private void cleanPartition(ProcessControlBlock pcb){
 		int count = 0;
-		int endIni = mm.translateLogicalIndexToFisical(pcb.memAlo , count);
-		for(int x = endIni; x < (endIni + mm.partitionSize); x++){
+		int endIni = mm.translateLogicalIndexToFisical(pcb.memAlo[0] , count);
+		for(int x = endIni; x < (endIni + (mm.pageSize*pcb.memAlo.length)); x++){
 				vm.m[x].opc = Opcode.___;
 				vm.m[x].r1 = -1;
 				vm.m[x].r2 = -1;
@@ -602,13 +707,14 @@ public class Sistema {
 	private void exec(int id){
 		ProcessControlBlock pcb = pm.searchProcess(id);
 			if(pcb != null){
-				int end = mm.translateLogicalIndexToFisical(pcb.memAlo, 0);
+				int end = mm.translateLogicalIndexToFisical(pcb.memAlo[0], 0);
 				//System.out.println("---------------------------------- programa carregado na memoria");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria nestas posicoes				
-		vm.cpu.setContext(0, vm.tamMem - 1, end, pcb.memAlo, pcb.r);      // seta estado da cpu ]
+		vm.cpu.setContext(0, vm.tamMem - 1, pcb.memAlo, pcb.memAlo[0], pcb.r);      // seta estado da cpu ]
 				//System.out.println("---------------------------------- inicia execucao ");
 		pm.ready.remove(pcb);
 		pm.running.add(pcb);
+		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		vm.cpu.run();                                // cpu roda programa ate parar	
 				//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -629,11 +735,11 @@ public class Sistema {
 				System.out.println("\n ---------------------------------");
 				System.out.println("Seja bem vindo ao sistema!");
 				System.out.println("Selecione a operacao desejada:");
-				System.out.println("	1 - Criar processo");
+				System.out.println("	1 - Criar processos");
 				System.out.println("	2 - Dump processo");
 				System.out.println("	3 - Desaloca processo");
 				System.out.println("	4 - Dump Memória");
-				System.out.println("	5 - Executar processo");
+				System.out.println("	5 - Executar processos");
 				System.out.println("	6 - TraceOn");
 				System.out.println("	7 - TraceOff");
 				System.out.println("	0 - Sair");
@@ -643,38 +749,12 @@ public class Sistema {
 		
 			switch (op) {
 						case 1:
-							System.out.println("Selecione uma ação:");
-							System.out.println("1- Fibonacci");
-							System.out.println("2- ProgMinimo");
-							System.out.println("3- Fatorial");
-							System.out.println("4- FatorialTrap");
-							System.out.println("5- FibonacciTrap");
-							System.out.println("6- Bubble Sort");
-							System.out.println("0- Voltar.");
-								
-								programs = sc.nextInt();
-								switch(programs){
-									case 1: pm.createProcess(progs.fibonacci10);
-									break;
-
-									case 2: pm.createProcess(progs.progMinimo);
-									break;
-
-									case 3: pm.createProcess(progs.fatorial);
-									break;
-
-									case 4: pm.createProcess(progs.fatorialTRAP);
-									break;
-
-									case 5: pm.createProcess(progs.fibonacciTRAP);
-									break;
-
-									case 0: 
-									break;
-
-									default: System.out.println("Opcao invalida");
-									break;
-								}
+							pm.createProcess(progs.fibonacci10);
+							pm.createProcess(progs.progMinimo);
+							pm.createProcess(progs.fatorial);
+							pm.createProcess(progs.fatorialTRAP);
+							//pm.createProcess(progs.fibonacciTRAP);
+							System.out.println("Processos criados!");
 						
 							break;
 						case 2:
@@ -700,8 +780,8 @@ public class Sistema {
 
 						case 5:
 							System.out.println("Digite o número do processo: ");
-							prcs = sc.nextInt();
-							exec(prcs);
+							int idprocess = pm.ready.get(0).id;
+							exec(idprocess);
 							break;
 
 						case 6:  System.out.println("Trace ativo");
@@ -731,13 +811,13 @@ public class Sistema {
 	public MemoryManager mm;
 	public ProcessManager pm;
 
-    public Sistema(){   // a VM com tratamento de interrupções
+    public SistemaEscl(){   // a VM com tratamento de interrupções
 		 ih = new InterruptHandling();
          sysCall = new SysCallHandling();
 		 vm = new VM(ih, sysCall);
 		 sysCall.setVM(vm);
 		 progs = new Programas();
-		 mm = new MemoryManager(1024, 60);
+		 mm = new MemoryManager(1024, 16);
 		 pm = new ProcessManager();
 	}
 
@@ -745,16 +825,16 @@ public class Sistema {
 	public class ProcessControlBlock{
 		public int id;
 		public int programCounter = 0;
-		public int memAlo;
+		public int[] memAlo;
 		public int memLimit;
 		public int r[];
 
-		public ProcessControlBlock(int id, int memAlo, int memLimit){
+		public ProcessControlBlock(int id, int memAlo[], int memLimit){
 			this.memAlo = memAlo;
 			this.id = id;
 			this.memLimit = memLimit;
 			r = new int[10];
-			programCounter = mm.translateLogicalIndexToFisical(memAlo, 0);
+			programCounter = mm.translateLogicalIndexToFisical(memAlo[0], 0);
 		}
 	}
 
@@ -776,18 +856,18 @@ public class Sistema {
 		public boolean createProcess(Word[] w){
 			ProcessControlBlock pcb;
 			if(mm.allocable(w.length)){
-				int memA = mm.alocate(w.length);
+				int[] memA = mm.alocate(w.length);
 				pcb = new ProcessControlBlock(id, memA, w.length);
 				pcbA.add(pcb);
 				ready.add(pcb);
 				//running.add(pcb);
-				loadPrograms(w, memA);
+				loadPrograms(w, memA[0], pcb);
 
 			} else{
 				System.out.println("Sem espaço na memoria");
 				return false;
 			}
-			System.out.println("Processo criado com id: "+(id));
+			//System.out.println("Processo criado com id: "+(id));
 			id++;
 			return true;
 		}
@@ -797,7 +877,7 @@ public class Sistema {
 				if(pcbs.id == id){
 					mm.dealocate(pcbs.memAlo);
 					pcbA.remove(pcbs);
-					//ready.remove(pcbs.id);
+					running.remove(0);
 					cleanPartition(pcbs);
 					System.out.println("Processo com ID "+id+" desalocado");
 					return;
@@ -820,9 +900,9 @@ public class Sistema {
 			for(ProcessControlBlock pcbs : pcbA){
 				if(pcbs.id == id){
 				System.out.println("ID: "+ pcbs.id);
-				System.out.println("Indice da Particao: "+ pcbs.memAlo);
+				System.out.println("Indice de pagina: "+ pcbs.memAlo[0]);
 				System.out.println("PC: "+ pcbs.programCounter);
-				vm.mem.dump(mm.translateLogicalIndexToFisical(pcbs.memAlo, 0), (mm.translateLogicalIndexToFisical(pcbs.memAlo, 0)) + pcbs.memLimit);
+				vm.mem.dump(mm.translateLogicalIndexToFisical(pcbs.memAlo[0], 0), (mm.translateLogicalIndexToFisical(pcbs.memAlo[0], 0)) + pcbs.memLimit);
 				cntrl = true;
 				} 
 			}
@@ -838,7 +918,7 @@ public class Sistema {
     // ------------------- instancia e testa sistema
 	public static void main(String args[]) {
 		
-		Sistema s = new Sistema();
+		SistemaEscl s = new SistemaEscl();
 
 		/*Scanner sc = new Scanner(System.in);
 		

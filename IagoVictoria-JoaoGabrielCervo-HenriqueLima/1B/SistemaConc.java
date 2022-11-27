@@ -9,7 +9,7 @@
 
 import java.util.*;
 
-public class SistemaPag {
+public class SistemaConc {
 	
 	// -------------------------------------------------------------------------------------------------------
 	// --------------------- H A R D W A R E - definicoes de HW ---------------------------------------------- 
@@ -101,7 +101,7 @@ public class SistemaPag {
 
 				logicalMemory[i] = true;
 				pagesIndex[pagesCount] = i;
-				System.out.println(pagesCount);
+				//System.out.println(pagesCount);
 				pagesCount++;
 				numOfAvailablePages--;
 				numOfPagesForProccess--;
@@ -163,7 +163,7 @@ public class SistemaPag {
 	}
 
 	public enum Interrupts {               // possiveis interrupcoes que esta CPU gera
-		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap;
+		noInterrupt, intEnderecoInvalido, intInstrucaoInvalida, intOverflow, intSTOP, intTrap, intEscl;
 	}
 
 	public class CPU {
@@ -177,7 +177,7 @@ public class SistemaPag {
 		private Interrupts irpt; 	// durante instrucao, interrupcao pode ser sinalizada
 		private int base;   		// base e limite de acesso na memoria
 		private int limite; // por enquanto toda memoria pode ser acessada pelo processo rodando
-							// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
+		private int cycles;					// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
 							// nas proximas versoes isto pode modificar
 
 		private Memory mem;               // mem tem funcoes de dump e o array m de memória 'fisica' 
@@ -288,10 +288,10 @@ public class SistemaPag {
 		public void run() {
 			int count = 0;
 			int paglim = (pc + mm.pageSize) -1 ; 		// execucao da CPU supoe que o contexto da CPU, vide acima, esta devidamente setado			
+			//System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 			while (true) { 			// ciclo de instrucoes. acaba cfe instrucao, veja cada caso.
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
-			   
 			   indexpart = pag[count];
 			   if(pc > paglim){
 				count++;
@@ -493,9 +493,17 @@ public class SistemaPag {
 							break;
 					}
 				}
+
+				cycles++;
+				if(cycles >= 5){
+					irpt = Interrupts.intEscl;
+					ih.handle(irpt,pc);
+					count = 0;
+					paglim = (pc + mm.pageSize) -1 ;
+				}
 			   // --------------------------------------------------------------------------------------------------
 			   // VERIFICA INTERRUPÇÃO !!! - TERCEIRA FASE DO CICLO DE INSTRUÇÕES
-				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap)) {   // existe interrupção
+				if (!(irpt == Interrupts.noInterrupt  || irpt == Interrupts.intTrap || irpt ==  Interrupts.intEscl)) {   // existe interrupção
 					ih.handle(irpt,pc);                       // desvia para rotina de tratamento
 					break; // break sai do loop da cpu
 				}
@@ -549,6 +557,11 @@ public class SistemaPag {
 				case intSTOP:
 				System.out.println("Interrupcao: O programa chegou ao fim");
 				pm.deallocateProcess(pm.running.get(0).id);
+				//pm.running.remove(pm.running.get(0).id);
+				if(pm.ready.size() > 0){
+					changeContext();
+					vm.cpu.run();
+				}
 				break;
 				case intEnderecoInvalido:
 				System.out.println("Interrupcao: Acesso a endereco de memoria invalido");
@@ -561,6 +574,14 @@ public class SistemaPag {
 				case intOverflow: 
 				System.out.println("Interrupcao Overflow");
 				pm.deallocateProcess(pm.running.get(0).id);
+				break;
+				case intEscl:
+				//System.out.println("Interrupcao Escalonamento");
+				//System.out.println(pm.running.get(0).id);
+				
+				//vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).programCounter, pm.running.get(0).r);
+				changeContext();
+				//System.out.println(pm.running.get(0).programCounter);
 				break;
 				}
 			}
@@ -611,6 +632,34 @@ public class SistemaPag {
 		loadProgram(p, vm.m);
 	}
 
+	private void changeContext(){
+		ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
+		if(pm.running.size() > 0){
+		pm.running.get(0).programCounter = vm.cpu.pc;
+		pm.running.get(0).r = vm.cpu.reg;
+		pm.ready.add(pm.running.get(0));
+		pm.running.remove(0);
+		}
+		pm.running.add(pm.ready.get(0));
+		pm.ready.remove(0);
+		for(ProcessControlBlock auxp: pm.ready){
+			aux.add(auxp);
+			//System.out.println(auxp.id);
+		}
+		pm.ready = aux;
+		if(!(vm.cpu.irpt == Interrupts.intSTOP)){
+			vm.cpu.cycles = 0;
+		}
+		vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).memAlo[0], pm.running.get(0).r);
+		vm.cpu.pc = pm.running.get(0).programCounter;
+		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
+
+		//vm.cpu.pag = pm.running.get(0).memAlo;
+		//vm.cpu.indexpart = pm.running.get(0).memAlo[0];
+		//vm.cpu.reg = pm.running.get(0).r;
+		//vm.cpu.irpt = Interrupts.noInterrupt;
+
+	}
 	/*private void loadAndExec(Word[] p){
 		loadProgram(p);    // carga do programa na memoria
 				System.out.println("---------------------------------- programa carregado na memoria");
@@ -665,6 +714,7 @@ public class SistemaPag {
 				//System.out.println("---------------------------------- inicia execucao ");
 		pm.ready.remove(pcb);
 		pm.running.add(pcb);
+		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		vm.cpu.run();                                // cpu roda programa ate parar	
 				//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -685,11 +735,11 @@ public class SistemaPag {
 				System.out.println("\n ---------------------------------");
 				System.out.println("Seja bem vindo ao sistema!");
 				System.out.println("Selecione a operacao desejada:");
-				System.out.println("	1 - Criar processo");
+				System.out.println("	1 - Criar processos");
 				System.out.println("	2 - Dump processo");
 				System.out.println("	3 - Desaloca processo");
 				System.out.println("	4 - Dump Memória");
-				System.out.println("	5 - Executar processo");
+				System.out.println("	5 - Executar processos");
 				System.out.println("	6 - TraceOn");
 				System.out.println("	7 - TraceOff");
 				System.out.println("	0 - Sair");
@@ -699,37 +749,12 @@ public class SistemaPag {
 		
 			switch (op) {
 						case 1:
-							System.out.println("Selecione uma ação:");
-							System.out.println("1- Fibonacci");
-							System.out.println("2- ProgMinimo");
-							System.out.println("3- Fatorial");
-							System.out.println("4- FatorialTrap");
-							System.out.println("5- FibonacciTrap");
-							System.out.println("0- Voltar.");
-								
-								programs = sc.nextInt();
-								switch(programs){
-									case 1: pm.createProcess(progs.fibonacci10);
-									break;
-
-									case 2: pm.createProcess(progs.progMinimo);
-									break;
-
-									case 3: pm.createProcess(progs.fatorial);
-									break;
-
-									case 4: pm.createProcess(progs.fatorialTRAP);
-									break;
-
-									case 5: pm.createProcess(progs.fibonacciTRAP);
-									break;
-
-									case 0: 
-									break;
-
-									default: System.out.println("Opcao invalida");
-									break;
-								}
+							pm.createProcess(progs.fibonacci10);
+							pm.createProcess(progs.progMinimo);
+							pm.createProcess(progs.fatorial);
+							pm.createProcess(progs.fatorialTRAP);
+							//pm.createProcess(progs.fibonacciTRAP);
+							System.out.println("Processos criados!");
 						
 							break;
 						case 2:
@@ -755,8 +780,8 @@ public class SistemaPag {
 
 						case 5:
 							System.out.println("Digite o número do processo: ");
-							prcs = sc.nextInt();
-							exec(prcs);
+							int idprocess = pm.ready.get(0).id;
+							exec(idprocess);
 							break;
 
 						case 6:  System.out.println("Trace ativo");
@@ -786,7 +811,7 @@ public class SistemaPag {
 	public MemoryManager mm;
 	public ProcessManager pm;
 
-    public SistemaPag(){   // a VM com tratamento de interrupções
+    public SistemaConc(){   // a VM com tratamento de interrupções
 		 ih = new InterruptHandling();
          sysCall = new SysCallHandling();
 		 vm = new VM(ih, sysCall);
@@ -842,7 +867,7 @@ public class SistemaPag {
 				System.out.println("Sem espaço na memoria");
 				return false;
 			}
-			System.out.println("Processo criado com id: "+(id));
+			//System.out.println("Processo criado com id: "+(id));
 			id++;
 			return true;
 		}
@@ -852,7 +877,7 @@ public class SistemaPag {
 				if(pcbs.id == id){
 					mm.dealocate(pcbs.memAlo);
 					pcbA.remove(pcbs);
-					//ready.remove(pcbs.id);
+					running.remove(0);
 					cleanPartition(pcbs);
 					System.out.println("Processo com ID "+id+" desalocado");
 					return;
@@ -893,7 +918,7 @@ public class SistemaPag {
     // ------------------- instancia e testa sistema
 	public static void main(String args[]) {
 		
-		SistemaPag s = new SistemaPag();
+		SistemaConc s = new SistemaConc();
 
 		/*Scanner sc = new Scanner(System.in);
 		
