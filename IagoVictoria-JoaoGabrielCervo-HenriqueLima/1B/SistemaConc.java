@@ -799,7 +799,7 @@ public class SistemaConc {
 		
 			switch (op) {
 						case 1:
-							//pm.createProcess(progs.fibonacci10);
+							pm.createProcess(progs.fibonacci10);
 							pm.createProcess(progs.progMinimo);
 							pm.createProcess(progs.fatorial);
 							pm.createProcess(progs.fatorialTRAP);
