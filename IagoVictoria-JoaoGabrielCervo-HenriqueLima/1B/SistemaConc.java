@@ -181,7 +181,8 @@ public class SistemaConc {
 		private int base;   		// base e limite de acesso na memoria
 		private int limite; // por enquanto toda memoria pode ser acessada pelo processo rodando
 		private int cycles;	
-		private boolean flag;				// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
+		private boolean flag;
+		private int countex = 0;				// ATE AQUI: contexto da CPU - tudo que precisa sobre o estado de um processo para executa-lo
 							// nas proximas versoes isto pode modificar
 
 		private Memory mem;               // mem tem funcoes de dump e o array m de memória 'fisica' 
@@ -794,8 +795,12 @@ public class SistemaConc {
 		pm.running.add(pcb);
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		//vm.cpu.run();
+		if(vm.cpu.countex == 0){
+			vm.cpu.countex++;
 		vm.cpu.start();
-		                                // cpu roda programa ate parar	
+		} else {
+			vm.cpu.run();
+		}
 		//sysCall.start();
 		//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -815,6 +820,7 @@ public class SistemaConc {
 		int memF = -1;
 		Scanner sc = new Scanner(System.in);
 		while(op!=0){
+			sysCall.iosem.release();
 			try {
 				shellsem.acquire();
 			} catch (InterruptedException e) {
@@ -846,7 +852,7 @@ public class SistemaConc {
 							//pm.createProcess(progs.fatorialTRAP);
 							pm.createProcess(progs.fibonacciTRAP);
 							System.out.println("Processos criados!");
-							//vm.cpu.run();
+							exec(pm.ready.get(0).id);
 							break;
 						case 2:
 							System.out.println("Digite o número do processo: ");
