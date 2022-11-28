@@ -611,7 +611,7 @@ public class SistemaConc {
 				//System.out.println(pm.running.get(0).programCounter);
 				break;
 				case intIO:
-				System.out.println("testeio 1");
+				//System.out.println("testeio 1");
 				ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
 				pm.ready.add(pm.blocked.get(0));
 				pm.blocked.remove(0);
@@ -620,9 +620,8 @@ public class SistemaConc {
 				}
 				pm.blocked = aux;
 				vm.cpu.irpt = Interrupts.noInterrupt;
-				System.out.println("testeio 2");
+				//System.out.println("testeio 2");
 				changeContext();
-				vm.cpu.run();
 				break;
 				}
 			}
@@ -729,6 +728,7 @@ public class SistemaConc {
 		}
 		vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).memAlo[0], pm.running.get(0).r);
 		vm.cpu.pc = pm.running.get(0).programCounter;
+		//System.out.println(vm.cpu.pc);
 		vm.cpu.flag = false;
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		//vm.cpu.semcpu.release();
