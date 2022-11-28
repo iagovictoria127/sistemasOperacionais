@@ -307,6 +307,10 @@ public class SistemaConc {
 				// For example consider calling Thread.currentThread().interrupt(); here.
 			}
 
+			if(irpt == Interrupts.intIO){
+				ih.handle(irpt,pc);
+			}
+
 			   indexpart = pag[count];
 			   if(pc > paglim){
 				count++;
@@ -499,8 +503,8 @@ public class SistemaConc {
 					    case TRAP:
 						     irpt = Interrupts.intTrap;
 							 pc++;
-						     trapCalling();            // <<<<< aqui desvia para rotina de chamada de sistema, no momento so temos IO
-						     break;
+
+							 break;
 
 					// Inexistente
 						default:
@@ -509,8 +513,12 @@ public class SistemaConc {
 					}
 				}
 
-				semcpu.release();
 				cycles++;
+				vm.cpu.semcpu.release();
+				if(irpt == Interrupts.intTrap){
+					trapCalling();            // <<<<< aqui desvia para rotina de chamada de sistema, no momento so temos IO
+					irpt = Interrupts.noInterrupt;
+				}
 				if(cycles >= 5 ){
 					irpt = Interrupts.intEscl;
 					ih.handle(irpt,pc);
@@ -597,12 +605,13 @@ public class SistemaConc {
 				case intEscl:
 				//System.out.println("Interrupcao Escalonamento");
 				//System.out.println(pm.running.get(0).id);
-				
+
 				//vm.cpu.setContext(0, vm.tamMem - 1, pm.running.get(0).memAlo, pm.running.get(0).programCounter, pm.running.get(0).r);
 				changeContext();
 				//System.out.println(pm.running.get(0).programCounter);
 				break;
 				case intIO:
+				System.out.println("testeio 1");
 				ArrayList<ProcessControlBlock> aux = new ArrayList<ProcessControlBlock>();
 				pm.ready.add(pm.blocked.get(0));
 				pm.blocked.remove(0);
@@ -611,6 +620,8 @@ public class SistemaConc {
 				}
 				pm.blocked = aux;
 				vm.cpu.irpt = Interrupts.noInterrupt;
+				System.out.println("testeio 2");
+				changeContext();
 				vm.cpu.run();
 				break;
 				}
@@ -623,18 +634,19 @@ public class SistemaConc {
 	public void trapCalling(){
 		vm.cpu.flag = true;
 		 changeContext();
-		 //sysCall.run();
+		// sysCall.run();
 	}
 
 	public class SysCallHandling extends Thread{
-		private Semaphore iosem = new Semaphore(1);
-		private ArrayList<Integer> processId = new ArrayList<Integer>();
+		private Semaphore iosem;
+		private ArrayList<Integer> processId;
 		private VM vm;
         public void setVM(VM _vm){
             vm = _vm;
         }
         public void run() {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
-
+			iosem = new Semaphore(1);
+			processId = new ArrayList<Integer>();
 			while(true){
 			try {
 				iosem.acquire();
@@ -646,16 +658,19 @@ public class SistemaConc {
 
 			if(pm.blocked.size() > 0){
 			ProcessControlBlock pcb = pm.blocked.get(0);
-			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
+			//System.out.println("                                               Chamada de Sistema com op  /  par:  "+ pcb.r[8] + " / " + pcb.r[9]);
 			if(pcb.r[8] == 1){
+				
 				int r9 = (mm.translateLogicalIndexToFisical(pm.blocked.get(0).memAlo[0], 0)) + pm.blocked.get(0).r[9];
 				System.out.println("TRAP: Processo de id "+ pm.blocked.get(0).id + " solicitando dados");
 				System.out.println("Digite um numero inteiro: ");
+				//Thread.sleep(2000);
 				Scanner sc = new Scanner(System.in);
 				int op = sc.nextInt();
 				vm.m[r9].p = op;
 				vm.cpu.irpt = Interrupts.intIO;
 				processId.remove(Integer.valueOf(pcb.id));
+				vm.cpu.run();
 			}
 			else if(pcb.r[8]  == 2){
 				int r9 = (mm.translateLogicalIndexToFisical(pm.blocked.get(0).memAlo[0], 0)) + pm.blocked.get(0).r[9];
@@ -692,16 +707,16 @@ public class SistemaConc {
 		pm.running.get(0).r = vm.cpu.reg;
 		pm.ready.add(pm.running.get(0));
 		pm.running.remove(0);
-		} else if(vm.cpu.flag == true) {
+		} else if(pm.running.size() > 0 && vm.cpu.flag == true) {
 			int r9 = (mm.translateLogicalIndexToFisical(pm.running.get(0).memAlo[0], 0)) + vm.cpu.reg[9];
-		System.out.println(vm.m[r9].p);
+		//System.out.println(vm.m[r9].p);
 		pm.running.get(0).programCounter = vm.cpu.pc;
 		pm.running.get(0).r = vm.cpu.reg;
 		sysCall.processId.add(pm.running.get(0).id);
 		pm.blocked.add(pm.running.get(0));
 		pm.running.remove(0);
 		
-		}
+		} 
 		pm.running.add(pm.ready.get(0));
 		pm.ready.remove(0);
 		for(ProcessControlBlock auxp: pm.ready){
@@ -780,7 +795,7 @@ public class SistemaConc {
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
 		//vm.cpu.run();
 		vm.cpu.start();
-		sysCall.start();                                // cpu roda programa ate parar	
+		                                // cpu roda programa ate parar	
 		//sysCall.start();
 		//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -790,7 +805,9 @@ public class SistemaConc {
 	}
 
 
-	public void console(){
+	public class ShellIO extends Thread{
+		private Semaphore shellsem = new Semaphore(1);
+	public void run(){
 		int op = -1;
 		int programs = -1;
 		int prcs = -1;
@@ -798,7 +815,14 @@ public class SistemaConc {
 		int memF = -1;
 		Scanner sc = new Scanner(System.in);
 		while(op!=0){
-				
+			try {
+				shellsem.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				// handle the exception...        
+				// For example consider calling Thread.currentThread().interrupt(); here.
+			}
+			
 				System.out.println("\n ---------------------------------");
 				System.out.println("Seja bem vindo ao sistema!");
 				System.out.println("Selecione a operacao desejada:");
@@ -863,9 +887,11 @@ public class SistemaConc {
 						case 0: System.exit(0); 
 						break;    
 			}
+			shellsem.release();
 		}                              
 
 	}
+}
 
 
 	// -------------------------------------------------------------------------------------------------------
@@ -877,6 +903,7 @@ public class SistemaConc {
 	public static Programas progs;
 	public MemoryManager mm;
 	public ProcessManager pm;
+	public ShellIO sh;
 
     public SistemaConc(){   // a VM com tratamento de interrupções
 		 ih = new InterruptHandling();
@@ -886,6 +913,7 @@ public class SistemaConc {
 		 progs = new Programas();
 		 mm = new MemoryManager(1024, 16);
 		 pm = new ProcessManager();
+		 sh = new ShellIO();
 	}
 
 	// GERENTE DE PROCESSOS
@@ -1027,7 +1055,8 @@ public class SistemaConc {
 		//s.exec(progs.fatorial);
 		//s.exec(progs.fibonacci10);
 		//s.vm.cpu.start();
-		s.console();
+		s.sysCall.start();
+		s.sh.start();
 		//s.pm.dumpProcess();
 		//s.pm.createProcess(progs.progMinimo);
 		//s.loadAndExec(progs.fibonacci10);
