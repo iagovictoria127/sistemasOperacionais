@@ -168,7 +168,7 @@ public class SistemaConc {
 	}
 
 	public class CPU extends Thread {
-		Semaphore semcpu = new Semaphore(0);
+		private Semaphore semcpu;
 		
 		private int maxInt; // valores maximo e minimo para inteiros nesta cpu
 		private int minInt;
@@ -200,6 +200,7 @@ public class SistemaConc {
 			ih = _ih;               // aponta para rotinas de tratamento de int
             sysCall = _sysCall;     // aponta para rotinas de tratamento de chamadas de sistema
 			debug =  _debug;        // se true, print da instrucao em execucao
+			semcpu = new Semaphore(1);
 		}
 		
 		/* 
@@ -298,13 +299,13 @@ public class SistemaConc {
 			   // --------------------------------------------------------------------------------------------------
 			   // FETCH
 
-			 //  try {
-			//	semcpu.acquire();
-			//} catch (InterruptedException e) {
-			//	e.printStackTrace();
+			   try {
+				semcpu.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
 				// handle the exception...        
 				// For example consider calling Thread.currentThread().interrupt(); here.
-		//	}
+			}
 
 			   indexpart = pag[count];
 			   if(pc > paglim){
@@ -508,6 +509,7 @@ public class SistemaConc {
 					}
 				}
 
+				semcpu.release();
 				cycles++;
 				if(cycles >= 5 ){
 					irpt = Interrupts.intEscl;
@@ -621,22 +623,30 @@ public class SistemaConc {
 	public void trapCalling(){
 		vm.cpu.flag = true;
 		 changeContext();
-		 sysCall.handle();
-		// sysCall.iosem.release();
+		 //sysCall.run();
 	}
 
 	public class SysCallHandling extends Thread{
-		private Semaphore iosem = new Semaphore(0);
+		private Semaphore iosem = new Semaphore(1);
 		private ArrayList<Integer> processId = new ArrayList<Integer>();
 		private VM vm;
         public void setVM(VM _vm){
             vm = _vm;
         }
-        public void handle() {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
+        public void run() {   // apenas avisa - todas interrupcoes neste momento finalizam o programa
 
+			while(true){
+			try {
+				iosem.acquire();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				// handle the exception...        
+				// For example consider calling Thread.currentThread().interrupt(); here.
+			}
 
+			if(pm.blocked.size() > 0){
 			ProcessControlBlock pcb = pm.blocked.get(0);
-			//System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
+			System.out.println("                                               Chamada de Sistema com op  /  par:  "+ vm.cpu.reg[8] + " / " + vm.cpu.reg[9]);
 			if(pcb.r[8] == 1){
 				int r9 = (mm.translateLogicalIndexToFisical(pm.blocked.get(0).memAlo[0], 0)) + pm.blocked.get(0).r[9];
 				System.out.println("TRAP: Processo de id "+ pm.blocked.get(0).id + " solicitando dados");
@@ -654,8 +664,12 @@ public class SistemaConc {
 				vm.cpu.irpt = Interrupts.intIO;
 				processId.remove(Integer.valueOf(pcb.id));
 				}
+
+				
 			}
-		
+			iosem.release();
+		}
+	}
     	}
 	
     // ------------------ U T I L I T A R I O S   D O   S I S T E M A -----------------------------------------
@@ -764,7 +778,9 @@ public class SistemaConc {
 		pm.ready.remove(pcb);
 		pm.running.add(pcb);
 		System.out.println("Processo com id "+ pm.running.get(0).id + " executando");
-		vm.cpu.run();                                // cpu roda programa ate parar	
+		//vm.cpu.run();
+		vm.cpu.start();
+		sysCall.start();                                // cpu roda programa ate parar	
 		//sysCall.start();
 		//System.out.println("---------------------------------- memoria apos execucao ");
 				//vm.mem.dump(end, end + pcb.memLimit);            // dump da memoria com resultado
@@ -800,11 +816,11 @@ public class SistemaConc {
 		
 			switch (op) {
 						case 1:
-							pm.createProcess(progs.fibonacci10);
+							//pm.createProcess(progs.fibonacci10);
 							pm.createProcess(progs.progMinimo);
 							pm.createProcess(progs.fatorial);
-							pm.createProcess(progs.fatorialTRAP);
-							//pm.createProcess(progs.fibonacciTRAP);
+							//pm.createProcess(progs.fatorialTRAP);
+							pm.createProcess(progs.fibonacciTRAP);
 							System.out.println("Processos criados!");
 							//vm.cpu.run();
 							break;
@@ -1010,7 +1026,7 @@ public class SistemaConc {
 		//s.exec(progs.progMinimo);
 		//s.exec(progs.fatorial);
 		//s.exec(progs.fibonacci10);
-		s.vm.cpu.start();
+		//s.vm.cpu.start();
 		s.console();
 		//s.pm.dumpProcess();
 		//s.pm.createProcess(progs.progMinimo);
